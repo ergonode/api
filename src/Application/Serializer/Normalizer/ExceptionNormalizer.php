@@ -1,5 +1,4 @@
 <?php
-
 /**
  * Copyright © Ergonode Sp. z o.o. All rights reserved.
  * See LICENSE.txt for license details.
@@ -7,18 +6,17 @@
 
 declare(strict_types=1);
 
-namespace Ergonode\Api\Infrastructure\JMS\Serializer\Handler;
+namespace Ergonode\Api\Application\Serializer\Normalizer;
 
-use Ergonode\Api\Application\Mapper\ExceptionMapperInterface;
-use Ergonode\Api\Infrastructure\Normalizer\ExceptionNormalizerInterface;
-use JMS\Serializer\Context;
-use JMS\Serializer\GraphNavigatorInterface;
-use JMS\Serializer\Handler\SubscribingHandlerInterface;
-use JMS\Serializer\Visitor\SerializationVisitorInterface;
+use Symfony\Component\Serializer\Normalizer\NormalizerInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Ergonode\Api\Application\Mapper\ExceptionMapperInterface;
+use Ergonode\Api\Infrastructure\Normalizer\ExceptionNormalizerInterface;
+use Ergonode\Api\Application\Exception\FormValidationHttpException;
+use Ergonode\Api\Application\Exception\ViolationsHttpException;
 
-class ExceptionHandler implements SubscribingHandlerInterface
+class ExceptionNormalizer implements NormalizerInterface
 {
     private const DEFAULT_CODE = Response::HTTP_INTERNAL_SERVER_ERROR;
     private const DEFAULT_MESSAGE = 'Internal server error';
@@ -36,36 +34,10 @@ class ExceptionHandler implements SubscribingHandlerInterface
     }
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
-    public static function getSubscribingMethods(): array
+    public function normalize($exception, $format = null, array $context = [])
     {
-        $methods = [];
-        $formats = ['json'];
-
-        foreach ($formats as $format) {
-            $methods[] = [
-                'direction' => GraphNavigatorInterface::DIRECTION_SERIALIZATION,
-                'type' => \Exception::class,
-                'format' => $format,
-                'method' => 'serialize',
-            ];
-        }
-
-        return $methods;
-    }
-
-    /**
-     * @param array $type
-     *
-     * @return array
-     */
-    public function serialize(
-        SerializationVisitorInterface $visitor,
-        \Exception $exception,
-        array $type,
-        Context $context
-    ): array {
         if (!$exception instanceof HttpException) {
             $code = $exception->getCode();
             $message = self::DEFAULT_MESSAGE;
@@ -84,8 +56,16 @@ class ExceptionHandler implements SubscribingHandlerInterface
             $message = $configuration['content']['message'] ?? $message;
         }
 
-        $data = $this->exceptionNormalizer->normalize($exception, (string) $code, $message);
+        return $this->exceptionNormalizer->normalize($exception, (string) $code, $message);
+    }
 
-        return $visitor->visitArray($data, $type);
+    /**
+     * {@inheritdoc}
+     */
+    public function supportsNormalization($data, $format = null)
+    {
+        return $data instanceof \Exception
+            && !$data instanceof FormValidationHttpException
+            && !$data instanceof ViolationsHttpException;
     }
 }
